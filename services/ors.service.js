@@ -1,7 +1,6 @@
 const axios = require("axios");
 
 const ORS_BASE = "https://api.openrouteservice.org";
-const ORS_TZ = "Europe/Paris";
 
 function requireApiKey() {
   const key = process.env.OPENROUTE_API_KEY;
@@ -24,9 +23,6 @@ async function geocodeOne(text) {
     params: {
       api_key: apiKey,
       text,
-      // Optional: bias results toward France/Paris-ish. Uncomment if you want.
-      // "focus.point.lat": 48.8566,
-      // "focus.point.lon": 2.3522,
       size: 1
     },
     timeout: 15000
@@ -38,12 +34,14 @@ async function geocodeOne(text) {
     err.status = 400;
     throw err;
   }
+
   const coords = feature.geometry?.coordinates; // [lon, lat]
   if (!Array.isArray(coords) || coords.length !== 2) {
     const err = new Error(`Geocoding invalide pour: ${text}`);
     err.status = 400;
     throw err;
   }
+
   return {
     coordinates: coords,
     label: feature.properties?.label || text
@@ -52,6 +50,7 @@ async function geocodeOne(text) {
 
 /**
  * Get driving distance (km) using ORS directions endpoint.
+ * IMPORTANT: /v2/directions/driving-car returns { routes:[{ summary:{ distance } }] }
  */
 async function getDrivingDistanceKm(fromLonLat, toLonLat) {
   const apiKey = requireApiKey();
@@ -62,19 +61,31 @@ async function getDrivingDistanceKm(fromLonLat, toLonLat) {
     {
       headers: {
         Authorization: apiKey,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        Accept: "application/json"
       },
       timeout: 20000
     }
   );
 
-  const meters = res.data?.features?.[0]?.properties?.summary?.distance;
+  // ✅ Correct path for JSON endpoint
+  const metersJson = res.data?.routes?.[0]?.summary?.distance;
+
+  // (fallback if you ever switch to /geojson endpoint)
+  const metersGeojson = res.data?.features?.[0]?.properties?.summary?.distance;
+
+  const meters =
+    typeof metersJson === "number" ? metersJson :
+    typeof metersGeojson === "number" ? metersGeojson :
+    null;
+
   if (typeof meters !== "number") {
     const err = new Error("Impossible de calculer la distance (ORS)");
     err.status = 502;
     throw err;
   }
+
   return meters / 1000;
 }
 
-module.exports = { geocodeOne, getDrivingDistanceKm, ORS_TZ };
+module.exports = { geocodeOne, getDrivingDistanceKm };
