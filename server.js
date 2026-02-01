@@ -1,5 +1,3 @@
-const estimateRoutes = require("./routes/estimate.routes");
-
 require("dotenv").config();
 
 const express = require("express");
@@ -11,6 +9,7 @@ const compression = require("compression");
 const db = require("./db/database");
 const authRoutes = require("./routes/auth.routes");
 const bookingRoutes = require("./routes/booking.routes");
+const estimateRoutes = require("./routes/estimate.routes"); // ✅ ajout estimation
 
 const app = express();
 
@@ -20,6 +19,9 @@ app.use(express.json({ limit: "1mb" }));
 app.use(compression());
 app.use(morgan("dev"));
 
+/**
+ * Initialisation base de données
+ */
 function initDb() {
   db.prepare(`
     CREATE TABLE IF NOT EXISTS users (
@@ -42,8 +44,10 @@ function initDb() {
     )
   `).run();
 
-  // add column for existing deployments safely
-  try { db.prepare("ALTER TABLE bookings ADD COLUMN pickup_datetime TEXT").run(); } catch (e) {}
+  // Sécurité si ancienne DB sans pickup_datetime
+  try {
+    db.prepare("ALTER TABLE bookings ADD COLUMN pickup_datetime TEXT").run();
+  } catch (e) {}
 }
 
 initDb();
@@ -52,8 +56,10 @@ app.get("/", (req, res) => {
   res.json({ status: "DriveUs backend running 🚗" });
 });
 
+// Routes API
 app.use("/api/auth", authRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/estimate", estimateRoutes); // ✅ route publique estimation
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
