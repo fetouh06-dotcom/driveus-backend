@@ -9,7 +9,8 @@ const compression = require("compression");
 const db = require("./db/database");
 const authRoutes = require("./routes/auth.routes");
 const bookingRoutes = require("./routes/booking.routes");
-const estimateRoutes = require("./routes/estimate.routes"); // ✅ ajout estimation
+const estimateRoutes = require("./routes/estimate.routes");
+const publicBookingRoutes = require("./routes/publicBooking.routes");
 
 const app = express();
 
@@ -44,10 +45,12 @@ function initDb() {
     )
   `).run();
 
-  // Sécurité si ancienne DB sans pickup_datetime
-  try {
-    db.prepare("ALTER TABLE bookings ADD COLUMN pickup_datetime TEXT").run();
-  } catch (e) {}
+  // Migrations "safe" si DB existante
+  try { db.prepare("ALTER TABLE bookings ADD COLUMN pickup_datetime TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_name TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_phone TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_email TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE bookings ADD COLUMN notes TEXT").run(); } catch (e) {}
 }
 
 initDb();
@@ -58,8 +61,9 @@ app.get("/", (req, res) => {
 
 // Routes API
 app.use("/api/auth", authRoutes);
-app.use("/api/bookings", bookingRoutes);
-app.use("/api/estimate", estimateRoutes); // ✅ route publique estimation
+app.use("/api/bookings", bookingRoutes); // routes protégées (avec token)
+app.use("/api/bookings/public", publicBookingRoutes); // ✅ réservation publique (sans login)
+app.use("/api/estimate", estimateRoutes); // ✅ estimation publique (sans login)
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
