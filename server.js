@@ -1,3 +1,5 @@
+const estimateRoutes = require("./routes/estimate.routes");
+
 require("dotenv").config();
 
 const express = require("express");
