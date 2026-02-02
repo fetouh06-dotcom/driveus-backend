@@ -48,16 +48,20 @@ router.post("/", async (req, res) => {
     const createdAt = new Date().toISOString();
 
     // Safe schema updates for existing DBs
+    try { db.prepare("ALTER TABLE bookings ADD COLUMN pickup_datetime TEXT").run(); } catch (e) {}
     try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_name TEXT").run(); } catch (e) {}
     try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_phone TEXT").run(); } catch (e) {}
     try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_email TEXT").run(); } catch (e) {}
     try { db.prepare("ALTER TABLE bookings ADD COLUMN notes TEXT").run(); } catch (e) {}
+    try { db.prepare("ALTER TABLE bookings ADD COLUMN status TEXT").run(); } catch (e) {}
+
+    const status = "pending";
 
     db.prepare(`
       INSERT INTO bookings
-        (id, user_id, pickup, dropoff, distance, price, created_at, pickup_datetime, customer_name, customer_phone, customer_email, notes)
+        (id, user_id, pickup, dropoff, distance, price, created_at, pickup_datetime, customer_name, customer_phone, customer_email, notes, status)
       VALUES
-        (?,  NULL,   ?,      ?,       ?,       ?,     ?,         ?,              ?,             ?,             ?,             ?)
+        (?,  NULL,   ?,      ?,       ?,       ?,     ?,         ?,              ?,             ?,             ?,             ?,     ?)
     `).run(
       id,
       p.label,
@@ -69,7 +73,8 @@ router.post("/", async (req, res) => {
       customer_name || null,
       customer_phone || null,
       customer_email || null,
-      notes || null
+      notes || null,
+      status
     );
 
     return res.json({
@@ -83,7 +88,8 @@ router.post("/", async (req, res) => {
       customer_name: customer_name || null,
       customer_phone: customer_phone || null,
       customer_email: customer_email || null,
-      notes: notes || null
+      notes: notes || null,
+      status
     });
   } catch (e) {
     const status = e.status || 500;
