@@ -9,9 +9,29 @@ const ALLOWED_STATUSES = ["pending", "confirmed", "completed", "cancelled"];
 /**
  * GET /api/admin/bookings
  * Protected by JWT
+ * Optional: ?status=pending|confirmed|completed|cancelled
  */
 router.get("/bookings", auth, (req, res) => {
   try {
+    const { status } = req.query;
+
+    // If status provided, validate and filter
+    if (status) {
+      if (!ALLOWED_STATUSES.includes(status)) {
+        return res.status(400).json({ error: "Statut invalide" });
+      }
+
+      const bookings = db.prepare(`
+        SELECT *
+        FROM bookings
+        WHERE status = ?
+        ORDER BY created_at DESC
+      `).all(status);
+
+      return res.json(bookings);
+    }
+
+    // Otherwise return all
     const bookings = db.prepare(`
       SELECT *
       FROM bookings
