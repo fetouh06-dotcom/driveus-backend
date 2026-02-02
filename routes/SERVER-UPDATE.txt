@@ -1,0 +1,9 @@
+=== MODIFICATIONS À FAIRE DANS server.js ===
+
+1) Ajouter en haut avec les autres routes :
+   const adminRoutes = require("./routes/admin.routes");
+
+2) Ajouter avec les autres app.use :
+   app.use("/api/admin", adminRoutes);
+
+Aucun autre changement nécessaire.
