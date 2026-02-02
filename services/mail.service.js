@@ -1,4 +1,4 @@
-const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 function requireEnv(name) {
   const v = process.env[name];
@@ -6,36 +6,28 @@ function requireEnv(name) {
   return v;
 }
 
-function buildTransporter() {
-  const host = requireEnv("SMTP_HOST");
-  const port = Number(requireEnv("SMTP_PORT"));
-  const user = requireEnv("SMTP_USER");
-  const pass = requireEnv("SMTP_PASS");
-
-  // Port 465 => SSL direct
-  const secure = port === 465;
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-
-    // ✅ évite les "Connection timeout" sur Render / cloud
-    connectionTimeout: 20000,
-    greetingTimeout: 20000,
-    socketTimeout: 20000
-  });
-}
-
-function getFrom() {
-  // Exemple: "DriveUs <no-reply@driveus.fr>"
-  return process.env.SMTP_FROM || process.env.SMTP_USER;
+function getFromRaw() {
+  // Ex: DriveUs <ecodrive06@gmail.com>
+  return process.env.SMTP_FROM || "DriveUs <ecodrive06@gmail.com>";
 }
 
 function getAdminEmail() {
-  // ✅ Ton email par défaut
   return process.env.ADMIN_EMAIL || "ecodrive06@gmail.com";
+}
+
+function parseFrom(fromRaw) {
+  // parse simple : "Name <email>"
+  let name = "DriveUs";
+  let email = "ecodrive06@gmail.com";
+
+  const m = fromRaw.match(/^(.*)<([^>]+)>$/);
+  if (m) {
+    name = (m[1] || "").trim().replace(/^"|"$/g, "") || name;
+    email = (m[2] || "").trim() || email;
+  } else if (fromRaw.includes("@")) {
+    email = fromRaw.trim();
+  }
+  return { name, email };
 }
 
 function formatBookingLines(b) {
@@ -57,15 +49,30 @@ function formatBookingLines(b) {
     .join("\n");
 }
 
-async function sendMail({ to, subject, text }) {
-  const transporter = buildTransporter();
-  const from = getFrom();
+/**
+ * Envoi email via Brevo API (HTTPS)
+ * Nécessite: BREVO_API_KEY dans Render
+ */
+async function sendBrevoEmail({ to, subject, text }) {
+  const apiKey = requireEnv("BREVO_API_KEY");
 
-  await transporter.sendMail({
-    from,
-    to,
+  const fromRaw = getFromRaw();
+  const sender = parseFrom(fromRaw);
+
+  const payload = {
+    sender,
+    to: [{ email: to }],
     subject,
-    text
+    textContent: text
+  };
+
+  await axios.post("https://api.brevo.com/v3/smtp/email", payload, {
+    headers: {
+      "api-key": apiKey,
+      "content-type": "application/json",
+      accept: "application/json"
+    },
+    timeout: 20000
   });
 }
 
@@ -78,7 +85,7 @@ async function notifyBookingCreated(booking) {
     `Nouvelle réservation créée (sans compte).\n\n` +
     `${formatBookingLines(booking)}\n`;
 
-  await sendMail({ to: admin, subject: subjectAdmin, text: textAdmin });
+  await sendBrevoEmail({ to: admin, subject: subjectAdmin, text: textAdmin });
 
   // 2) Email client (si email fourni)
   if (booking.customer_email) {
@@ -91,7 +98,7 @@ async function notifyBookingCreated(booking) {
       `Vous recevrez un email dès que la course sera confirmée.\n\n` +
       `DriveUs`;
 
-    await sendMail({
+    await sendBrevoEmail({
       to: booking.customer_email,
       subject: subjectCustomer,
       text: textCustomer
@@ -110,9 +117,9 @@ async function notifyStatusChanged(booking, oldStatus, newStatus) {
     `Nouveau: ${newStatus}\n\n` +
     `${formatBookingLines(booking)}\n`;
 
-  await sendMail({ to: admin, subject: subjectAdmin, text: textAdmin });
+  await sendBrevoEmail({ to: admin, subject: subjectAdmin, text: textAdmin });
 
-  // 2) Email client (si email fourni)
+  // 2) Email client
   if (booking.customer_email) {
     const subjectCustomer = `Mise à jour de votre réservation DriveUs: ${newStatus}`;
     const textCustomer =
@@ -121,7 +128,7 @@ async function notifyStatusChanged(booking, oldStatus, newStatus) {
       `${formatBookingLines(booking)}\n\n` +
       `DriveUs`;
 
-    await sendMail({
+    await sendBrevoEmail({
       to: booking.customer_email,
       subject: subjectCustomer,
       text: textCustomer
