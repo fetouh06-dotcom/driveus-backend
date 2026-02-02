@@ -11,7 +11,7 @@ const authRoutes = require("./routes/auth.routes");
 const bookingRoutes = require("./routes/booking.routes");
 const estimateRoutes = require("./routes/estimate.routes");
 const publicBookingRoutes = require("./routes/publicBooking.routes");
-const adminRoutes = require("./routes/admin.routes"); // ✅ AJOUT
+const adminRoutes = require("./routes/admin.routes");
 
 const app = express();
 
@@ -42,7 +42,8 @@ function initDb() {
       distance REAL,
       price REAL,
       created_at TEXT,
-      pickup_datetime TEXT
+      pickup_datetime TEXT,
+      status TEXT
     )
   `).run();
 
@@ -52,6 +53,10 @@ function initDb() {
   try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_phone TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_email TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN notes TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE bookings ADD COLUMN status TEXT").run(); } catch (e) {}
+
+  // Backfill status for existing rows
+  try { db.prepare("UPDATE bookings SET status = 'pending' WHERE status IS NULL").run(); } catch (e) {}
 }
 
 initDb();
@@ -62,10 +67,10 @@ app.get("/", (req, res) => {
 
 // Routes API
 app.use("/api/auth", authRoutes);
-app.use("/api/bookings", bookingRoutes); 
+app.use("/api/bookings", bookingRoutes);
 app.use("/api/bookings/public", publicBookingRoutes);
 app.use("/api/estimate", estimateRoutes);
-app.use("/api/admin", adminRoutes); // ✅ AJOUT
+app.use("/api/admin", adminRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
