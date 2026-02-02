@@ -4,21 +4,13 @@ const { v4: uuid } = require("uuid");
 const db = require("../db/database");
 const { calculatePrice } = require("../services/price.service");
 const { geocodeOne, getDrivingDistanceKm } = require("../services/ors.service");
+const { notifyBookingCreated } = require("../services/mail.service");
 
 const router = express.Router();
 
 /**
  * Public booking endpoint (no login required)
  * POST /api/bookings/public
- *
- * Body:
- *  - pickup_text (string) REQUIRED
- *  - dropoff_text (string) REQUIRED
- *  - pickup_datetime (ISO string) optional (defaults to now)
- *  - customer_name (string) optional
- *  - customer_phone (string) optional
- *  - customer_email (string) optional
- *  - notes (string) optional
  */
 router.post("/", async (req, res) => {
   try {
@@ -77,18 +69,39 @@ router.post("/", async (req, res) => {
       status
     );
 
-    return res.json({
+    const booking = {
       id,
+      user_id: null,
       pickup: p.label,
       dropoff: d.label,
-      distance: +distKm.toFixed(3),
+      distance: distKm,
       price,
-      pickup_datetime: when,
       created_at: createdAt,
+      pickup_datetime: when,
       customer_name: customer_name || null,
       customer_phone: customer_phone || null,
       customer_email: customer_email || null,
       notes: notes || null,
+      status
+    };
+
+    // Email notifications (non-blocking)
+    notifyBookingCreated(booking).catch((err) => {
+      console.error("Email error (booking created):", err.message);
+    });
+
+    return res.json({
+      id,
+      pickup: booking.pickup,
+      dropoff: booking.dropoff,
+      distance: +distKm.toFixed(3),
+      price,
+      pickup_datetime: when,
+      created_at: createdAt,
+      customer_name: booking.customer_name,
+      customer_phone: booking.customer_phone,
+      customer_email: booking.customer_email,
+      notes: booking.notes,
       status
     });
   } catch (e) {
