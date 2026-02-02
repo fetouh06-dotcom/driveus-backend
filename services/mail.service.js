@@ -12,22 +12,30 @@ function buildTransporter() {
   const user = requireEnv("SMTP_USER");
   const pass = requireEnv("SMTP_PASS");
 
+  // Port 465 => SSL direct
   const secure = port === 465;
 
   return nodemailer.createTransport({
     host,
     port,
     secure,
-    auth: { user, pass }
+    auth: { user, pass },
+
+    // ✅ évite les "Connection timeout" sur Render / cloud
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 20000
   });
 }
 
 function getFrom() {
+  // Exemple: "DriveUs <no-reply@driveus.fr>"
   return process.env.SMTP_FROM || process.env.SMTP_USER;
 }
 
 function getAdminEmail() {
-  return process.env.ADMIN_EMAIL || process.env.SMTP_USER;
+  // ✅ Ton email par défaut
+  return process.env.ADMIN_EMAIL || "ecodrive06@gmail.com";
 }
 
 function formatBookingLines(b) {
@@ -44,22 +52,35 @@ function formatBookingLines(b) {
     b.customer_phone ? `Téléphone: ${b.customer_phone}` : null,
     b.customer_email ? `Email: ${b.customer_email}` : null,
     b.notes ? `Notes: ${b.notes}` : null
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function sendMail({ to, subject, text }) {
   const transporter = buildTransporter();
   const from = getFrom();
-  await transporter.sendMail({ from, to, subject, text });
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text
+  });
 }
 
 async function notifyBookingCreated(booking) {
   const admin = getAdminEmail();
+
+  // 1) Email admin
   const subjectAdmin = `🚗 Nouvelle réservation (pending) - ${booking.pickup} → ${booking.dropoff}`;
-  const textAdmin = `Nouvelle réservation créée (sans compte).\n\n${formatBookingLines(booking)}`;
+  const textAdmin =
+    `Nouvelle réservation créée (sans compte).\n\n` +
+    `${formatBookingLines(booking)}\n`;
 
   await sendMail({ to: admin, subject: subjectAdmin, text: textAdmin });
 
+  // 2) Email client (si email fourni)
   if (booking.customer_email) {
     const subjectCustomer = `Votre demande DriveUs est reçue ✅`;
     const textCustomer =
@@ -69,17 +90,29 @@ async function notifyBookingCreated(booking) {
       `${formatBookingLines(booking)}\n\n` +
       `Vous recevrez un email dès que la course sera confirmée.\n\n` +
       `DriveUs`;
-    await sendMail({ to: booking.customer_email, subject: subjectCustomer, text: textCustomer });
+
+    await sendMail({
+      to: booking.customer_email,
+      subject: subjectCustomer,
+      text: textCustomer
+    });
   }
 }
 
 async function notifyStatusChanged(booking, oldStatus, newStatus) {
   const admin = getAdminEmail();
+
+  // 1) Email admin
   const subjectAdmin = `📌 Statut modifié: ${oldStatus} → ${newStatus} (${booking.id})`;
-  const textAdmin = `Statut modifié par l'admin.\n\nAncien: ${oldStatus}\nNouveau: ${newStatus}\n\n${formatBookingLines(booking)}`;
+  const textAdmin =
+    `Statut modifié par l'admin.\n\n` +
+    `Ancien: ${oldStatus}\n` +
+    `Nouveau: ${newStatus}\n\n` +
+    `${formatBookingLines(booking)}\n`;
 
   await sendMail({ to: admin, subject: subjectAdmin, text: textAdmin });
 
+  // 2) Email client (si email fourni)
   if (booking.customer_email) {
     const subjectCustomer = `Mise à jour de votre réservation DriveUs: ${newStatus}`;
     const textCustomer =
@@ -87,8 +120,16 @@ async function notifyStatusChanged(booking, oldStatus, newStatus) {
       `Le statut de votre réservation a été mis à jour : ${oldStatus} → ${newStatus}.\n\n` +
       `${formatBookingLines(booking)}\n\n` +
       `DriveUs`;
-    await sendMail({ to: booking.customer_email, subject: subjectCustomer, text: textCustomer });
+
+    await sendMail({
+      to: booking.customer_email,
+      subject: subjectCustomer,
+      text: textCustomer
+    });
   }
 }
 
-module.exports = { notifyBookingCreated, notifyStatusChanged };
+module.exports = {
+  notifyBookingCreated,
+  notifyStatusChanged
+};
