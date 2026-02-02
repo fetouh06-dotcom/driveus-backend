@@ -11,6 +11,7 @@ const authRoutes = require("./routes/auth.routes");
 const bookingRoutes = require("./routes/booking.routes");
 const estimateRoutes = require("./routes/estimate.routes");
 const publicBookingRoutes = require("./routes/publicBooking.routes");
+const adminRoutes = require("./routes/admin.routes"); // ✅ AJOUT
 
 const app = express();
 
@@ -45,7 +46,7 @@ function initDb() {
     )
   `).run();
 
-  // Migrations "safe" si DB existante
+  // Migrations "safe"
   try { db.prepare("ALTER TABLE bookings ADD COLUMN pickup_datetime TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_name TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_phone TEXT").run(); } catch (e) {}
@@ -61,9 +62,10 @@ app.get("/", (req, res) => {
 
 // Routes API
 app.use("/api/auth", authRoutes);
-app.use("/api/bookings", bookingRoutes); // routes protégées (avec token)
-app.use("/api/bookings/public", publicBookingRoutes); // ✅ réservation publique (sans login)
-app.use("/api/estimate", estimateRoutes); // ✅ estimation publique (sans login)
+app.use("/api/bookings", bookingRoutes); 
+app.use("/api/bookings/public", publicBookingRoutes);
+app.use("/api/estimate", estimateRoutes);
+app.use("/api/admin", adminRoutes); // ✅ AJOUT
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
