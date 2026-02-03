@@ -14,13 +14,13 @@ function requireEnv(name) {
   return v;
 }
 
-// Test route
 router.get("/", (req, res) => {
   res.json({ ok: true, service: "payments" });
 });
 
 /**
  * POST /api/payments/deposit-session
+ * Body: { booking_id }
  */
 router.post("/deposit-session", async (req, res) => {
   try {
@@ -41,7 +41,7 @@ router.post("/deposit-session", async (req, res) => {
           quantity: 1,
           price_data: {
             currency: "eur",
-            unit_amount: 1000,
+            unit_amount: 1000, // 10€
             product_data: {
               name: "Acompte réservation DriveUs (10€)",
               description: `Réservation ${booking.pickup} → ${booking.dropoff}`
@@ -56,11 +56,11 @@ router.post("/deposit-session", async (req, res) => {
 
     db.prepare(`
       UPDATE bookings
-      SET stripe_session_id = ?, payment_status = 'deposit_pending'
+      SET stripe_session_id = ?, payment_status = 'deposit_pending', deposit_amount = 10, deposit_paid = 0
       WHERE id = ?
     `).run(session.id, booking_id);
 
-    return res.json({ url: session.url });
+    return res.json({ url: session.url, session_id: session.id });
   } catch (e) {
     console.error("Stripe deposit-session error:", e.message);
     return res.status(500).json({ error: "Erreur paiement (Stripe)" });
@@ -68,9 +68,9 @@ router.post("/deposit-session", async (req, res) => {
 });
 
 /**
- * POST /api/payments/webhook
+ * Handler webhook exporté (utilisé par server.js avec express.raw)
  */
-router.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
+function stripeWebhookHandler(req, res) {
   let event;
 
   try {
@@ -82,23 +82,37 @@ router.post("/webhook", express.raw({ type: "application/json" }), (req, res) =>
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const bookingId = session.metadata?.booking_id;
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const bookingId = session.metadata?.booking_id;
 
-    if (bookingId) {
-      db.prepare(`
-        UPDATE bookings
-        SET deposit_paid = 1,
-            payment_status = 'deposit_paid',
-            status = 'confirmed',
-            stripe_payment_intent_id = ?
-        WHERE id = ?
-      `).run(session.payment_intent || null, bookingId);
+      if (bookingId) {
+        db.prepare(`
+          UPDATE bookings
+          SET deposit_paid = 1,
+              payment_status = 'deposit_paid',
+              status = 'confirmed',
+              stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ?)
+          WHERE id = ?
+        `).run(session.payment_intent || null, bookingId);
+      }
     }
-  }
 
-  return res.json({ received: true });
-});
+    if (event.type === "checkout.session.expired") {
+      const session = event.data.object;
+      const bookingId = session.metadata?.booking_id;
+      if (bookingId) {
+        db.prepare(`UPDATE bookings SET payment_status = 'deposit_failed' WHERE id = ?`).run(bookingId);
+      }
+    }
+
+    return res.json({ received: true });
+  } catch (e) {
+    console.error("Webhook handler error:", e.message);
+    return res.status(500).send("Webhook handler failed");
+  }
+}
 
 module.exports = router;
+module.exports.stripeWebhookHandler = stripeWebhookHandler;
