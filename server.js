@@ -13,7 +13,6 @@ const estimateRoutes = require("./routes/estimate.routes");
 const publicBookingRoutes = require("./routes/publicBooking.routes");
 const adminRoutes = require("./routes/admin.routes");
 
-// ✅ Stripe routes
 const paymentRoutes = require("./routes/payments.routes");
 
 const app = express();
@@ -23,11 +22,14 @@ app.use(cors({ origin: "*" }));
 app.use(compression());
 app.use(morgan("dev"));
 
-// ✅ IMPORTANT : Stripe webhook doit recevoir le RAW body
-// Donc on monte /api/payments AVANT express.json()
-app.use("/api/payments", paymentRoutes);
+/**
+ * ✅ Stripe webhook DOIT être raw() et AVANT express.json()
+ * On le gère ici directement via un handler exporté depuis payments.routes.js
+ */
+const { stripeWebhookHandler } = require("./routes/payments.routes");
+app.post("/api/payments/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
 
-// JSON parser pour le reste des routes
+// ✅ JSON pour TOUT le reste
 app.use(express.json({ limit: "1mb" }));
 
 /**
@@ -57,8 +59,6 @@ function initDb() {
       customer_phone TEXT,
       customer_email TEXT,
       notes TEXT,
-
-      -- ✅ Stripe acompte
       deposit_amount REAL,
       deposit_paid INTEGER,
       payment_status TEXT,
@@ -67,35 +67,24 @@ function initDb() {
     )
   `).run();
 
-  // Migrations "safe" (si DB existante)
-  try { db.prepare("ALTER TABLE bookings ADD COLUMN pickup_datetime TEXT").run(); } catch (e) {}
+  // Migrations safe
   try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_name TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_phone TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN customer_email TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN notes TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN status TEXT").run(); } catch (e) {}
 
-  // ✅ Stripe columns
   try { db.prepare("ALTER TABLE bookings ADD COLUMN deposit_amount REAL").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN deposit_paid INTEGER").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN payment_status TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN stripe_session_id TEXT").run(); } catch (e) {}
   try { db.prepare("ALTER TABLE bookings ADD COLUMN stripe_payment_intent_id TEXT").run(); } catch (e) {}
 
-  // Backfill status for existing rows
   try { db.prepare("UPDATE bookings SET status = 'pending' WHERE status IS NULL").run(); } catch (e) {}
-
-  // Backfill paiement acompte (si besoin)
-  try { db.prepare("UPDATE bookings SET deposit_amount = 10 WHERE deposit_amount IS NULL").run(); } catch (e) {}
-  try { db.prepare("UPDATE bookings SET deposit_paid = 0 WHERE deposit_paid IS NULL").run(); } catch (e) {}
-  try { db.prepare("UPDATE bookings SET payment_status = 'deposit_pending' WHERE payment_status IS NULL").run(); } catch (e) {}
 }
-
 initDb();
 
-app.get("/", (req, res) => {
-  res.json({ status: "DriveUs backend running 🚗" });
-});
+app.get("/", (req, res) => res.json({ status: "DriveUs backend running 🚗" }));
 
 // Routes API
 app.use("/api/auth", authRoutes);
@@ -104,7 +93,8 @@ app.use("/api/bookings/public", publicBookingRoutes);
 app.use("/api/estimate", estimateRoutes);
 app.use("/api/admin", adminRoutes);
 
+// ✅ Les routes payments (hors webhook) APRES express.json()
+app.use("/api/payments", paymentRoutes);
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
-});
+app.listen(PORT, () => console.log("🚀 Server running on port", PORT));
