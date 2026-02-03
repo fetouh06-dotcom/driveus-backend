@@ -7,18 +7,18 @@ function requireEnv(name) {
 }
 
 function getFromRaw() {
-  // Ex: DriveUs <ecodrive06@gmail.com>
-  return process.env.SMTP_FROM || "DriveUs <ecodrive06@gmail.com>";
+  // ✅ Recommandé: DriveUs <contact@driveus.fr>
+  return process.env.SMTP_FROM || "DriveUs <contact@driveus.fr>";
 }
 
 function getAdminEmail() {
-  return process.env.ADMIN_EMAIL || "ecodrive06@gmail.com";
+  // ✅ Recommandé: contact@driveus.fr (ou redirection vers ton gmail)
+  return process.env.ADMIN_EMAIL || "contact@driveus.fr";
 }
 
 function parseFrom(fromRaw) {
-  // parse simple : "Name <email>"
   let name = "DriveUs";
-  let email = "ecodrive06@gmail.com";
+  let email = "contact@driveus.fr";
 
   const m = fromRaw.match(/^(.*)<([^>]+)>$/);
   if (m) {
@@ -59,11 +59,51 @@ async function sendBrevoEmail({ to, subject, text }) {
   const fromRaw = getFromRaw();
   const sender = parseFrom(fromRaw);
 
+  // ✅ Assure du texte brut (corrige MIME_HTML_ONLY)
+  const safeText = String(text || "").trim() || "DriveUs - Chauffeur privé.";
+
+  // ✅ Convertit le texte brut en HTML propre (et ajoute du contenu)
+  const htmlText = safeText
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+
   const payload = {
     sender,
     to: [{ email: to }],
     subject,
-    textContent: text
+
+    // ✅ Version texte brut
+    textContent: safeText,
+
+    // ✅ Version HTML (avec suffisamment de texte réel)
+    htmlContent: `
+      <html>
+        <body style="font-family: Arial, sans-serif; line-height:1.5; color:#111; background:#fff;">
+          <h2 style="margin:0 0 10px 0;">DriveUs – Chauffeur Privé</h2>
+
+          <p style="margin:0 0 12px 0;">
+            Merci. Votre message a bien été pris en compte. Voici le récapitulatif :
+          </p>
+
+          <div style="padding:12px; border:1px solid #ddd; border-radius:10px; margin-bottom:12px;">
+            ${htmlText}
+          </div>
+
+          <p style="margin:0 0 12px 0;">
+            Pour modifier l’horaire ou l’adresse, répondez simplement à cet email.
+          </p>
+
+          <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
+
+          <p style="font-size:12px;color:#666;margin:0;">
+            DriveUs • <a href="mailto:${sender.email}">${sender.email}</a><br>
+            Service VTC premium – Paris & Île-de-France
+          </p>
+        </body>
+      </html>
+    `
   };
 
   await axios.post("https://api.brevo.com/v3/smtp/email", payload, {
@@ -79,7 +119,6 @@ async function sendBrevoEmail({ to, subject, text }) {
 async function notifyBookingCreated(booking) {
   const admin = getAdminEmail();
 
-  // 1) Email admin
   const subjectAdmin = `🚗 Nouvelle réservation (pending) - ${booking.pickup} → ${booking.dropoff}`;
   const textAdmin =
     `Nouvelle réservation créée (sans compte).\n\n` +
@@ -87,7 +126,6 @@ async function notifyBookingCreated(booking) {
 
   await sendBrevoEmail({ to: admin, subject: subjectAdmin, text: textAdmin });
 
-  // 2) Email client (si email fourni)
   if (booking.customer_email) {
     const subjectCustomer = `Votre demande DriveUs est reçue ✅`;
     const textCustomer =
@@ -109,7 +147,6 @@ async function notifyBookingCreated(booking) {
 async function notifyStatusChanged(booking, oldStatus, newStatus) {
   const admin = getAdminEmail();
 
-  // 1) Email admin
   const subjectAdmin = `📌 Statut modifié: ${oldStatus} → ${newStatus} (${booking.id})`;
   const textAdmin =
     `Statut modifié par l'admin.\n\n` +
@@ -119,7 +156,6 @@ async function notifyStatusChanged(booking, oldStatus, newStatus) {
 
   await sendBrevoEmail({ to: admin, subject: subjectAdmin, text: textAdmin });
 
-  // 2) Email client
   if (booking.customer_email) {
     const subjectCustomer = `Mise à jour de votre réservation DriveUs: ${newStatus}`;
     const textCustomer =
