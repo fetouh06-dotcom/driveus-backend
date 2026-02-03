@@ -1,6 +1,6 @@
 {
   "name": "driveus-backend",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "description": "DriveUs backend - VTC",
   "main": "server.js",
   "scripts": {
@@ -22,7 +22,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "uuid": "^9.0.1",
-    "nodemailer": "^6.9.7"
+    "stripe": "^16.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
